@@ -97,16 +97,6 @@ def evaluate_data():
 
     return jsonify(evaluation_results)
 
-
-# @app.route('/result', methods=['POST'])
-# def receive_result():
-#     result = request.json['result']
-
-#     # Process the result or perform any desired logic
-#     print('Received result:', result)
-
-#     return 'Result received successfully'
-
 @app.route('/original_images', methods=['GET'])
 def original_images():
     data_folder = "images2"
@@ -125,14 +115,6 @@ def original_images():
 # Start the Flask app
 if __name__ == '__main__':
     app.run(port=5010)
-
-# @app.route("/receive", methods=["POST"])
-# def receive():
-#     # Get the shared result from the request
-#     result = MPCTensor(session=session, shares=request.json["shares"])
-
-#     # Reconstruct the result by combining the shares
-#     result.reconstruct()
 
 #     # Perform further computations on the result or use it as needed
 
