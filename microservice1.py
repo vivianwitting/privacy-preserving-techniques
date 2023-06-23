@@ -1,3 +1,10 @@
+# Date: 23/06/2023
+# Name: Vivian Witting
+# Project: Evaluation and comparison of privacy-preserving techniques for
+#          distributed medical image processing.
+# University of Amsterdam
+# This file contains functions to apply privacy-preserving techniques.
+# ------------------------------------------------------------------------
 
 import os
 import json
@@ -6,11 +13,12 @@ import numpy as np
 from Pyfhel import Pyfhel
 from flask import Flask, jsonify
 
-noise_array = np.random.randint(0, 20, size=30)
-data_folder = "images50"
+data_ct = "images10"
+data_list = data_ct
+
 epsilon = 0.8 # Privacy parameter
 sensitivity = 1.0
-delta = 10e-4
+delta = 10e-4 # Probability of failing to maintain privacy
 
 app = Flask(__name__)
 
@@ -32,14 +40,14 @@ app = Flask(__name__)
 
 
 # Differential privacy
-def add_laplace_noise(image, epsilon):
+def add_laplace_noise(image):
     shape = image.shape
     noise = np.random.laplace(scale=sensitivity/epsilon, size=shape)
     noisy_data = np.round(image + noise).astype(int)
     return noisy_data
 
 # Differential privacy
-def add_gaussian_blur(data, delta):
+def add_gaussian_blur(data):
     # Compute the standard deviation (sigma) based on epsilon and sensitivity
     sigma = (2 * (sensitivity**2) * np.log(1.25/delta)) / (epsilon**2)
     noisy_data = data + np.random.normal(0, sigma, size=data.shape)
@@ -47,6 +55,8 @@ def add_gaussian_blur(data, delta):
 
 # Homomorphic encryption
 def homomorphic_encryption(pixel_array, bfv_params):
+
+    # Resize the image to fit the target number of slots
     HE = Pyfhel()           # Creating empty Pyfhel object
     HE.contextGen(**bfv_params)  # Generate context for bfv scheme
     HE.keyGen()             # Key Generation: generates a pair of public/secret keys
@@ -57,20 +67,41 @@ def homomorphic_encryption(pixel_array, bfv_params):
     ctxt = HE.encryptPtxt(ptxt)
 
     # cc_mull = ctxt * ctxt
-    # cc_sum = cc_mull + cc_mull
+    cc_sum = ctxt + ctxt
 
-    d_result = HE.decryptInt(ctxt)
+    d_result = HE.decryptInt(cc_sum)
 
     return json.dumps(d_result.tolist())
 
-@app.route('/encrypted_results', methods=['GET'])
-def encrypted_results():
+# ---------------- Communicating to other micro service --------------------
+
+
+# Communicates plain results of the computation (for comparison with HE).
+@app.route('/plain_results', methods=['GET'])
+def plain_results():
     # Retrieve all DICOM image files in the "images" folder
-    image_names = os.listdir(data_folder)
+    image_names = os.listdir(data_list)
     processed_images = []
 
     for image_name in image_names:
-        image_path = os.path.join(data_folder, image_name)
+        image_path = os.path.join(data_list, image_name)
+        image = pydicom.dcmread(image_path)
+        converted_array = image.pixel_array.flatten()[:bfv_params['n']].astype(np.int64)
+        # acMul = converted_array * converted_array
+        acSum = converted_array + converted_array
+        processed_images.append(acSum.tolist())
+
+    return jsonify(processed_images)
+
+# Communicates encrypted data after the homomorphic encryption applied.
+@app.route('/encrypted_results', methods=['GET'])
+def encrypted_results():
+    # Retrieve all DICOM image files in the "images" folder
+    image_names = os.listdir(data_list)
+    processed_images = []
+
+    for image_name in image_names:
+        image_path = os.path.join(data_list, image_name)
         image = pydicom.dcmread(image_path)
         converted_array = image.pixel_array.flatten()[:bfv_params['n']].astype(np.int64)
         cM = homomorphic_encryption(converted_array, bfv_params)
@@ -78,61 +109,42 @@ def encrypted_results():
 
     return jsonify(processed_images)
 
-@app.route('/plain_results', methods=['GET'])
-def plain_results():
-    # Retrieve all DICOM image files in the "images" folder
-    image_names = os.listdir(data_folder)
-    processed_images = []
-
-    for image_name in image_names:
-        image_path = os.path.join(data_folder, image_name)
-        image = pydicom.dcmread(image_path)
-        converted_array = image.pixel_array.flatten()[:bfv_params['n']].astype(np.int64)
-        # acMul = converted_array * converted_array
-        # acSum = acMul + acMul
-        processed_images.append(converted_array.tolist())
-
-    return jsonify(processed_images)
-
+# Communicates encrypted data after the Laplace or Gaussion noise is applied.
 @app.route('/processed_images', methods=['GET'])
 def processed_images():
     # Retrieve all DICOM image files in the "images" folder
-    image_names = os.listdir(data_folder)
+    image_names = os.listdir(data_list)
     processed_images = []
 
     for image_name in image_names:
-        image_path = os.path.join(data_folder, image_name)
+        image_path = os.path.join(data_list, image_name)
         image = pydicom.dcmread(image_path)
         image = image.pixel_array
 
         # Apply differential privacy to each image using Laplace noise
-        # proc_image = add_laplace_noise(image, epsilon)
-        proc_image = add_gaussian_blur(image, delta)
-
-        # Changing every pixel as way of anonymizing
-        # proc_image = anonymize_image(image)
-
+        # proc_image = add_laplace_noise(image)
+        proc_image = add_gaussian_blur(image)
 
         processed_images.append(proc_image.tolist())
 
     return jsonify(processed_images)
 
-
+# Communicates the original plain data.
 @app.route('/original_images', methods=['GET'])
 def original_images():
     # Retrieve all DICOM image files in the "images" folder
-    image_names = os.listdir(data_folder)
+    image_names = os.listdir(data_list)
     original_images = []
 
     for image_name in image_names:
-        image_path = os.path.join(data_folder, image_name)
+        image_path = os.path.join(data_list, image_name)
         image = pydicom.dcmread(image_path)
 
         original_images.append(image.pixel_array.tolist())
 
     return jsonify(original_images)
 
-# Example usage:
+
 # Start the Flask app
 if __name__ == '__main__':
     app.run(port=5000)
