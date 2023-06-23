@@ -3,6 +3,7 @@ Small distributed network to simulate privacy-preserving algorithms for distribu
 Network is build out of Python microservices that communicate using Flask framework.
 
 Micro service 1 includes techniques: Differential privacy (Laplace & Gaussian) and Homomorphic Encryption
+
 Micro service 2 includes metrics: MSE, SSIM, CPU usage, and time
 
 
